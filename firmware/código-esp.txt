@@ -1,0 +1,381 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <AceButton.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+// =======================================================
+// 1. CREDENCIAIS
+// =======================================================
+#define WIFI_SSID "NOME_DA_SUA_REDE"
+#define WIFI_PASSWORD "SENHA_DA_SUA_REDE"
+#define API_KEY "AIzaSyAmdb7YUBl9grWPQvpn6OtNHqX0r2_Z47Q"
+#define DATABASE_URL "test-19-04-26-default-rtdb.europe-west1.firebasedatabase.app"
+#define USER_EMAIL "operador_esp32@sistema.com" 
+#define USER_PASSWORD "senha123"
+
+FirebaseData stream;
+FirebaseData fbdoWrite;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// =======================================================
+// 2. PINOUT - ESP32-S3 (Mapeamento Corrigido)
+// =======================================================
+// Motores BTS7960 e Relé Escova
+#define MOT_TRAC1_EN 4   
+#define MOT_TRAC1_DIR 5  
+#define MOT_TRAC1_ESQ 6  
+#define MOT_TRAC2_EN 7   
+#define MOT_TRAC2_DIR 15  
+#define MOT_TRAC2_ESQ 16  
+#define MOT_ESCOVA_EN 17  
+#define MOT_ESCOVA_ON 18  
+
+// Sensores Ultrassônicos
+#define TRIG_HOME 10    
+#define ECHO_HOME 11   
+#define TRIG_FIM 12     
+#define ECHO_FIM 13    
+
+// Pinos de Leitura de Bateria (ADC1)
+#define PINO_BAT1 1   
+#define PINO_BAT2 2   
+
+// Botões Físicos do Painel (Corrigidos para 37 e 38)
+#define PINO_BOTAO_1 37 // Muda / Iniciar / Inverter
+#define PINO_BOTAO_2 38 // Confirma / Pausar / Menu
+
+// Display I2C (Padrão S3: SDA = 8, SCL = 9)
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+using namespace ace_button;
+ButtonConfig configBotoes;
+AceButton botao1(&configBotoes, PINO_BOTAO_1);
+AceButton botao2(&configBotoes, PINO_BOTAO_2);
+
+// =======================================================
+// 3. VARIÁVEIS DE ESTADO DO SISTEMA
+// =======================================================
+String modoAtual = "manual";
+String sentidoAtual = "DIR";
+bool emMovimento = false;
+int ciclosRealizados = 0;
+
+String periodoTipo = "minutos";
+int periodoValor = 10;
+unsigned long tempoParaProximaLimpezaMs = 600000; 
+unsigned long timerPeriodicidade = 0;
+
+float tensaoBat1 = 12.0;
+float tensaoBat2 = 12.0;
+
+int etapaAuto = 0; 
+unsigned long lastTelemetria = 0;
+unsigned long lastLerSensores = 0;
+
+bool noMenuConfig = false;
+int etapaMenu = 0; 
+String tempModo = "";
+String tempPeriodoTipo = "";
+int tempPeriodoValor = 10;
+
+void atualizarDisplayLCD();
+void acionarMotores(String sentido);
+void pararMotores();
+
+// =======================================================
+// 4. FUNÇÕES DE HARDWARE
+// =======================================================
+float lerDistancia(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  long duracao = pulseIn(echoPin, HIGH, 15000); 
+  if (duracao == 0) return 999.0; 
+  return (duracao * 0.0343) / 2;
+}
+
+void lerBaterias() {
+  int valBat1 = analogRead(PINO_BAT1);
+  int valBat2 = analogRead(PINO_BAT2);
+  tensaoBat1 = (valBat1 / 4095.0) * 14.5; 
+  tensaoBat2 = (valBat2 / 4095.0) * 14.5; 
+}
+
+void recalcularTempo() {
+  if (periodoTipo == "minutos") tempoParaProximaLimpezaMs = periodoValor * 60000UL;
+  else if (periodoTipo == "horas") tempoParaProximaLimpezaMs = periodoValor * 3600000UL;
+  else if (periodoTipo == "dias") tempoParaProximaLimpezaMs = periodoValor * 86400000UL;
+  timerPeriodicidade = millis(); 
+}
+
+void acionarMotores(String sentido) {
+  emMovimento = true;
+  sentidoAtual = sentido;
+
+  digitalWrite(MOT_ESCOVA_EN, HIGH); digitalWrite(MOT_ESCOVA_ON, HIGH);
+  digitalWrite(MOT_TRAC1_EN, HIGH); digitalWrite(MOT_TRAC2_EN, HIGH);
+
+  if (sentido == "DIR") {
+    digitalWrite(MOT_TRAC1_ESQ, LOW); digitalWrite(MOT_TRAC2_ESQ, LOW);
+    digitalWrite(MOT_TRAC1_DIR, HIGH); digitalWrite(MOT_TRAC2_DIR, HIGH);
+  } else {
+    digitalWrite(MOT_TRAC1_DIR, LOW); digitalWrite(MOT_TRAC2_DIR, LOW);
+    digitalWrite(MOT_TRAC1_ESQ, HIGH); digitalWrite(MOT_TRAC2_ESQ, HIGH);
+  }
+  
+  if (Firebase.ready()) {
+    Firebase.RTDB.setString(&fbdoWrite, "/sistema_limpeza/comandos/sentido_direcao", sentidoAtual);
+    Firebase.RTDB.setBool(&fbdoWrite, "/sistema_limpeza/comandos/iniciar", true);
+    Firebase.RTDB.setBool(&fbdoWrite, "/sistema_limpeza/comandos/pausar", false);
+  }
+  atualizarDisplayLCD();
+}
+
+void pararMotores() {
+  emMovimento = false;
+  digitalWrite(MOT_ESCOVA_EN, LOW); digitalWrite(MOT_ESCOVA_ON, LOW);
+  digitalWrite(MOT_TRAC1_EN, LOW); digitalWrite(MOT_TRAC2_EN, LOW);
+  digitalWrite(MOT_TRAC1_DIR, LOW); digitalWrite(MOT_TRAC2_DIR, LOW);
+  digitalWrite(MOT_TRAC1_ESQ, LOW); digitalWrite(MOT_TRAC2_ESQ, LOW);
+  
+  if (Firebase.ready()) {
+    Firebase.RTDB.setBool(&fbdoWrite, "/sistema_limpeza/comandos/pausar", true);
+    Firebase.RTDB.setBool(&fbdoWrite, "/sistema_limpeza/comandos/iniciar", false);
+  }
+  atualizarDisplayLCD();
+}
+
+// =======================================================
+// 5. BOTÕES LOCAIS E MENU DE CONFIGURAÇÃO
+// =======================================================
+void handleEvent(AceButton* button, uint8_t eventType, uint8_t buttonState) {
+  int pino = button->getPin();
+
+  if (eventType == AceButton::kEventLongPressed && pino == PINO_BOTAO_2 && !emMovimento) {
+    noMenuConfig = true; etapaMenu = 0;
+    tempModo = modoAtual; tempPeriodoTipo = periodoTipo; tempPeriodoValor = periodoValor;
+    atualizarDisplayLCD(); return;
+  }
+
+  if (eventType == AceButton::kEventLongPressed && pino == PINO_BOTAO_1 && modoAtual == "manual" && !noMenuConfig) {
+    sentidoAtual = (sentidoAtual == "DIR") ? "ESQ" : "DIR";
+    if (Firebase.ready()) { Firebase.RTDB.setString(&fbdoWrite, "/sistema_limpeza/comandos/sentido_direcao", sentidoAtual); }
+    if (emMovimento) acionarMotores(sentidoAtual);
+    atualizarDisplayLCD(); return;
+  }
+
+  if (eventType == AceButton::kEventReleased) {
+    if (noMenuConfig) {
+      if (pino == PINO_BOTAO_1) { 
+        if (etapaMenu == 0) tempModo = (tempModo == "manual") ? "automatico" : "manual";
+        else if (etapaMenu == 1) {
+          if (tempPeriodoTipo == "minutos") tempPeriodoTipo = "horas";
+          else if (tempPeriodoTipo == "horas") tempPeriodoTipo = "dias";
+          else tempPeriodoTipo = "minutos";
+        } 
+        else if (etapaMenu == 2) {
+          tempPeriodoValor++; if (tempPeriodoValor > 60) tempPeriodoValor = 1;
+        }
+        atualizarDisplayLCD();
+      } 
+      else if (pino == PINO_BOTAO_2) { 
+        etapaMenu++;
+        if (etapaMenu > 2) { 
+          noMenuConfig = false;
+          modoAtual = tempModo; periodoTipo = tempPeriodoTipo; periodoValor = tempPeriodoValor;
+          recalcularTempo();
+          
+          if (Firebase.ready()) {
+            Firebase.RTDB.setString(&fbdoWrite, "/sistema_limpeza/config/modo", modoAtual);
+            Firebase.RTDB.setString(&fbdoWrite, "/sistema_limpeza/config/periodo_tipo", periodoTipo);
+            Firebase.RTDB.setInt(&fbdoWrite, "/sistema_limpeza/config/periodo_valor", periodoValor);
+          }
+        }
+        atualizarDisplayLCD();
+      }
+    } 
+    else { 
+      if (modoAtual == "manual") {
+        if (pino == PINO_BOTAO_1 && !emMovimento) acionarMotores(sentidoAtual);
+        if (pino == PINO_BOTAO_2 && emMovimento) pararMotores();
+      }
+    }
+  }
+}
+
+void atualizarDisplayLCD() {
+  lcd.clear();
+  if (!noMenuConfig) {
+    lcd.setCursor(0, 0); lcd.print("MD:"); lcd.print(modoAtual == "manual" ? "MANUAL" : "AUTO  ");
+    lcd.setCursor(12, 0); lcd.print("DIR:"); lcd.print(sentidoAtual);
+    lcd.setCursor(0, 1); lcd.print("ST:"); lcd.print(emMovimento ? "EM MOVIMENTO" : "PARADO      ");
+    lcd.setCursor(0, 2); lcd.print("B1:"); lcd.print(tensaoBat1, 1); lcd.print("V");
+    lcd.setCursor(10, 2); lcd.print("B2:"); lcd.print(tensaoBat2, 1); lcd.print("V");
+    lcd.setCursor(0, 3); lcd.print("CICLOS REA: "); lcd.print(ciclosRealizados);
+  } 
+  else {
+    lcd.setCursor(0, 0); lcd.print("--- CONFIGURACAO ---");
+    if (etapaMenu == 0) {
+      lcd.setCursor(0, 1); lcd.print("1. MODO DE OPERACAO:");
+      lcd.setCursor(0, 2); lcd.print("> "); lcd.print(tempModo == "manual" ? "MANUAL    " : "AUTOMATICO");
+    } 
+    else if (etapaMenu == 1) {
+      lcd.setCursor(0, 1); lcd.print("2. TIPO DE PERIODO:");
+      lcd.setCursor(0, 2); lcd.print("> "); lcd.print(tempPeriodoTipo);
+    } 
+    else if (etapaMenu == 2) {
+      lcd.setCursor(0, 1); lcd.print("3. VALOR DO TEMPO:");
+      lcd.setCursor(0, 2); lcd.print("> "); lcd.print(tempPeriodoValor); lcd.print("   ");
+    }
+    lcd.setCursor(0, 3); lcd.print("B1:Muda | B2:Confirma");
+  }
+}
+
+// =======================================================
+// 6. COMUNICAÇÃO (STREAM EM TEMPO REAL)
+// =======================================================
+void streamCallback(FirebaseStream data) {
+  String path = data.dataPath();
+  if (path.indexOf("/config/modo") != -1) { 
+    modoAtual = data.stringData(); 
+    timerPeriodicidade = millis(); 
+    etapaAuto = 0;
+    atualizarDisplayLCD(); 
+  }
+  else if (path.indexOf("/config/periodo_tipo") != -1) { periodoTipo = data.stringData(); recalcularTempo(); }
+  else if (path.indexOf("/config/periodo_valor") != -1) { periodoValor = data.intData(); recalcularTempo(); }
+  else if (path.indexOf("/comandos/sentido_direcao") != -1) { sentidoAtual = data.stringData(); atualizarDisplayLCD(); }
+  else if (path.indexOf("/comandos/iniciar") != -1 && data.boolData() == true && !emMovimento) {
+    if(modoAtual == "automatico") { etapaAuto = 1; }
+    acionarMotores(sentidoAtual);
+  }
+  else if (path.indexOf("/comandos/pausar") != -1 && data.boolData() == true && emMovimento) { pararMotores(); }
+  else if (path.indexOf("/comandos/reset_ciclos") != -1 && data.boolData() == true) {
+    ciclosRealizados = 0;
+    if (Firebase.ready()) {
+      Firebase.RTDB.setInt(&fbdoWrite, "/sistema_limpeza/telemetria/ciclos_realizados", 0);
+      Firebase.RTDB.setBool(&fbdoWrite, "/sistema_limpeza/comandos/reset_ciclos", false);
+    }
+    atualizarDisplayLCD();
+  }
+}
+void streamTimeoutCallback(bool timeout) { }
+
+// =======================================================
+// 7. SETUP
+// =======================================================
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(MOT_TRAC1_EN, OUTPUT); pinMode(MOT_TRAC1_DIR, OUTPUT); pinMode(MOT_TRAC1_ESQ, OUTPUT);
+  pinMode(MOT_TRAC2_EN, OUTPUT); pinMode(MOT_TRAC2_DIR, OUTPUT); pinMode(MOT_TRAC2_ESQ, OUTPUT);
+  pinMode(MOT_ESCOVA_EN, OUTPUT); pinMode(MOT_ESCOVA_ON, OUTPUT);
+  pinMode(TRIG_HOME, OUTPUT); pinMode(ECHO_HOME, INPUT);
+  pinMode(TRIG_FIM, OUTPUT); pinMode(ECHO_FIM, INPUT);
+  pinMode(PINO_BOTAO_1, INPUT_PULLUP); pinMode(PINO_BOTAO_2, INPUT_PULLUP);
+
+  lcd.init(); lcd.backlight();
+  lcd.setCursor(0,0); lcd.print("INICIANDO SISTEMA...");
+
+  configBotoes.setEventHandler(handleEvent);
+  configBotoes.setFeature(ButtonConfig::kFeatureLongPress);
+  configBotoes.setLongPressDelay(3000); 
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+  config.token_status_callback = tokenStatusCallback;
+  
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Firebase.RTDB.beginStream(&stream, "/sistema_limpeza");
+  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
+
+  timerPeriodicidade = millis(); 
+  lcd.clear(); atualizarDisplayLCD();
+}
+
+// =======================================================
+// 8. LOOP PRINCIPAL (LÓGICA AUTOMÁTICA E TELEMETRIA)
+// =======================================================
+void loop() {
+  botao1.check();
+  botao2.check();
+
+  // Rotina de Telemetria e Contagem Regressiva (A cada 5 segundos)
+  if (millis() - lastTelemetria > 5000) {
+    lastTelemetria = millis();
+    lerBaterias();
+
+    int tempoRestanteSeg = 0;
+    if (modoAtual == "automatico" && etapaAuto == 0) {
+      unsigned long decorrido = millis() - timerPeriodicidade;
+      if (tempoParaProximaLimpezaMs > decorrido) {
+        tempoRestanteSeg = (tempoParaProximaLimpezaMs - decorrido) / 1000;
+      }
+    }
+
+    if (Firebase.ready()) {
+      Firebase.RTDB.setFloat(&fbdoWrite, "/sistema_limpeza/telemetria/tensao_bat1", tensaoBat1);
+      Firebase.RTDB.setFloat(&fbdoWrite, "/sistema_limpeza/telemetria/tensao_bat2", tensaoBat2);
+      Firebase.RTDB.setInt(&fbdoWrite, "/sistema_limpeza/telemetria/tempo_restante", tempoRestanteSeg);
+    }
+    if(!noMenuConfig) atualizarDisplayLCD(); 
+  }
+
+  // --- CONTROLE INDUSTRIAL DA MÁQUINA DE ESTADOS ---
+  if (modoAtual == "automatico") {
+    
+    if (!emMovimento && etapaAuto == 0) {
+      if (millis() - timerPeriodicidade >= tempoParaProximaLimpezaMs) {
+        etapaAuto = 1; 
+        acionarMotores("DIR"); 
+      }
+    }
+
+    if (emMovimento && (millis() - lastLerSensores > 100)) { 
+      lastLerSensores = millis();
+      
+      float distFim = lerDistancia(TRIG_FIM, ECHO_FIM);
+      float distHome = lerDistancia(TRIG_HOME, ECHO_HOME);
+
+      if (etapaAuto == 1 && distFim < 20.0) { 
+        pararMotores(); 
+        delay(1000); 
+        etapaAuto = 2; 
+        acionarMotores("ESQ"); 
+      } 
+      else if (etapaAuto == 2 && distHome < 20.0) { 
+        pararMotores(); 
+        delay(1000); 
+        etapaAuto = 3; 
+        acionarMotores("DIR"); 
+      }
+      else if (etapaAuto == 3 && distFim < 20.0) { 
+        pararMotores(); 
+        delay(1000); 
+        etapaAuto = 4; 
+        acionarMotores("ESQ"); 
+      }
+      else if (etapaAuto == 4 && distHome < 20.0) { 
+        pararMotores(); 
+        etapaAuto = 0; 
+        ciclosRealizados++;
+        
+        timerPeriodicidade = millis(); 
+        if (Firebase.ready()) { 
+          Firebase.RTDB.setInt(&fbdoWrite, "/sistema_limpeza/telemetria/ciclos_realizados", ciclosRealizados); 
+        }
+      }
+    }
+  }
+}
