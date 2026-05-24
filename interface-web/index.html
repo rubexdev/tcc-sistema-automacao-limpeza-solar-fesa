@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Supervisório Limpeza</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <style>
+    /* Padrão ISA-101 e Variáveis de Tema */
+    :root {
+      --text-main: #333333;
+      --accent-active: #2e7d32; 
+      --accent-stop: #c62828;   
+      --accent-info: #0277bd;   
+      --border-radius: 8px;     
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url('Background Interface.png');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      color: #ffffff; 
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    /* --- CABEÇALHO (TÍTULO PRINCIPAL) --- */
+    .main-header {
+      text-align: center;
+      margin-top: 2vh;
+      margin-bottom: 5vh;
+      animation: fadeIn 1s ease-in-out;
+    }
+    .main-header h3 {
+      color: #4fc3f7; 
+      letter-spacing: 3px;
+      font-weight: 600;
+      margin: 0 0 10px 0;
+      font-size: 1.2rem;
+    }
+    .main-header h1 {
+      font-size: 2rem;
+      font-weight: 400;
+      margin: 0;
+      max-width: 800px;
+      line-height: 1.3;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+
+    /* --- PAINÉIS ESTILO GLASSMORPHISM --- */
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      padding: 30px;
+      width: 100%;
+      box-sizing: border-box;
+      color: #fff;
+    }
+
+    #loginForm { max-width: 450px; margin: 0 auto; }
+    #dashboard { display: none; width: 100%; max-width: 1000px; }
+
+    .login-title {
+      font-size: 1.1rem;
+      text-align: center;
+      margin-bottom: 25px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      font-weight: 500;
+    }
+    .login-title .material-icons { font-size: 2.5rem; color: #4fc3f7; }
+
+    input[type="email"], input[type="password"], select, input[type="number"] {
+      width: 100%;
+      padding: 14px;
+      margin-bottom: 15px;
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: var(--border-radius);
+      background: rgba(255,255,255,0.9);
+      color: #333;
+      font-size: 1rem;
+      box-sizing: border-box;
+      transition: all 0.3s;
+    }
+    input:focus { outline: none; border-color: #4fc3f7; box-shadow: 0 0 8px rgba(79, 195, 247, 0.5); }
+
+    .error-msg {
+      background-color: rgba(198, 40, 40, 0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: center;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
+      display: none;
+      animation: shake 0.4s;
+    }
+
+    /* --- INDICADOR DE STATUS (BADGE) --- */
+    .status-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(0,0,0,0.4);
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      width: fit-content;
+      margin-left: auto;
+      margin-right: auto;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #999;
+      box-shadow: inset 0 0 3px rgba(0,0,0,0.5);
+      transition: background-color 0.3s;
+    }
+    .dot-ok { background-color: #00e676; box-shadow: 0 0 10px #00e676; animation: pulse 2s infinite; }
+    .dot-error { background-color: #ff1744; box-shadow: 0 0 10px #ff1744; }
+
+    /* --- BOTÕES --- */
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 5px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      color: white;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    button:active { transform: scale(0.98); }
+    
+    .btn-login { background-color: #0288d1; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+    .btn-login:hover { background-color: #0277bd; }
+    .btn-start { background-color: var(--accent-active); }
+    .btn-stop { background-color: var(--accent-stop); }
+    .btn-mode { flex: 1; background-color: #555; border: 1px solid #777;}
+    .btn-mode.active { background-color: var(--accent-info); border-color: #4fc3f7;}
+
+    /* --- DASHBOARD INTERNO --- */
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;}
+    .card { background: rgba(255, 255, 255, 0.95); border: none; padding: 20px; border-radius: var(--border-radius); color: var(--text-main); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+    .card h2 { color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-top: 0;}
+    .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold; font-size: 1.1rem; }
+    .value-display { font-family: monospace; font-size: 1.3rem; color: var(--accent-info); }
+
+    /* Barra de Bateria */
+    .battery-container { width: 100px; height: 18px; background-color: #ddd; border: 2px solid #777; border-radius: 3px; position: relative; margin-left: 10px; }
+    .battery-container::after { content: ''; position: absolute; right: -6px; top: 3px; width: 4px; height: 8px; background-color: #777; border-radius: 0 2px 2px 0; }
+    .battery-fill { height: 100%; background-color: var(--accent-active); width: 0%; transition: width 0.5s, background-color 0.5s; }
+
+    /* Display do Motor (Feedback) */
+    .motor-status-box {
+      background-color: #e0e0e0;
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+    }
+    .motor-status-box.active { background-color: #e8f5e9; border-color: var(--accent-active); color: var(--accent-active); }
+
+    /* Botão Reverter */
+    #btnReverter { position: relative; overflow: hidden; background-color: #ff9800; color: white; }
+    #btnReverter span { position: relative; z-index: 2; pointer-events: none;}
+    #btnReverter::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; background-color: #e65100; width: 0%; z-index: 1; transition: width 0s linear; }
+    #btnReverter.holding::before { width: 100%; transition: width 3s linear; }
+
+    /* Terminal de Logs SCADA */
+    .log-terminal { background-color: rgba(0, 0, 0, 0.85); color: #fff; border-radius: 6px; height: 200px; overflow-y: auto; padding: 10px; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; border: 1px solid #555; display: flex; flex-direction: column-reverse; }
+    .log-terminal::-webkit-scrollbar { width: 8px; }
+    .log-terminal::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    .log-terminal::-webkit-scrollbar-thumb { background: #666; border-radius: 4px; }
+    
+    .log-entry { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .log-time { color: #888; margin-right: 8px; }
+    .log-msg-info { color: #4fc3f7; }
+    .log-msg-success { color: #69f0ae; }
+    .log-msg-alert { color: #ffb300; }
+    .log-msg-danger { color: #ff5252; }
+
+    /* Grid do Gerenciador de Usuários */
+    .user-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; }
+    @media (max-width: 650px) { .user-grid { grid-template-columns: 1fr; } }
+
+    /* Animações */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes shake { 0%, 100% {transform: translateX(0);} 20%, 60% {transform: translateX(-5px);} 40%, 80% {transform: translateX(5px);} }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 230, 118, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); } }
+
+    /* Toast */
+    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%); font-size: 1rem; box-shadow: 0 4px 8px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.5s, bottom 0.5s; }
+    #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
+  </style>
+</head>
+<body>
+
+  <div id="toast">Notificação</div>
+
+  <div class="main-header">
+    <h3>PROTÓTIPO</h3>
+    <h1>Interface Web para Controle e Monitoramento do Sistema de Limpeza de Placas Fotovoltaicas</h1>
+  </div>
+
+  <div id="loginForm" class="glass-panel">
+    <div class="status-badge" title="Verifica a comunicação com o servidor de banco de dados">
+      <div id="serverLed" class="status-dot"></div>
+      <span id="serverStatusText">Conectando ao Servidor...</span>
+    </div>
+
+    <div class="login-title">
+      <span class="material-icons">admin_panel_settings</span>
+      Insira os Dados para Acessar as Configurações
+    </div>
+    
+    <div id="loginError" class="error-msg">Usuário ou senha incorretos! Tente novamente.</div>
+
+    <input type="email" id="email" placeholder="E-mail do Operador" autocomplete="email"/>
+    <input type="password" id="password" placeholder="Senha de Acesso" autocomplete="current-password"/>
+    <button id="loginBtn" class="btn-login"><span class="material-icons">login</span> Acessar Sistema</button>
+  </div>
+
+  <div id="dashboard" class="glass-panel">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 15px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+      <h2 style="margin: 0; font-size: 1.4rem;">Interface Web/Supervisório</h2>
+      
+      <div class="status-badge" style="margin: 0;" title="Comunicação em tempo real com a placa">
+        <div id="espLed" class="status-dot"></div>
+        <span id="espStatusText">Aguardando Informações...</span>
+      </div>
+    </div>
+      
+    <div class="dashboard-grid">
+      <div class="card">
+        <h2><span class="material-icons">settings</span> Modo de Operação</h2>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+          <button id="btnModoManual" class="btn-mode active">MANUAL</button>
+          <button id="btnModoAuto" class="btn-mode">AUTO</button>
+        </div>
+        
+        <div id="countdownContainer" style="display: none; text-align: center; margin-bottom: 20px; padding: 12px; background: rgba(2, 119, 189, 0.1); border: 1px solid var(--accent-info); border-radius: 6px;">
+          <p style="margin: 0; font-size: 0.85rem; color: #666; font-weight: bold; text-transform: uppercase;">Próxima Limpeza Automática em:</p>
+          <h2 id="lblCountdown" style="margin: 5px 0 0 0; color: var(--accent-info); font-family: monospace; font-size: 1.8rem; letter-spacing: 1px;">00:00:00</h2>
+        </div>
+        
+        <div id="configAuto">
+          <p style="font-size: 0.85rem; color: #666; margin-top: 0;">* A periodicidade só pode ser alterada no Modo Manual.</p>
+          <label style="font-weight: bold; font-size: 0.9rem; color: #555;">Periodicidade:</label>
+          <select id="selPeriodoTipo">
+            <option value="minutos">Minutos</option>
+            <option value="horas">Horas</option>
+            <option value="dias">Dias</option>
+          </select>
+          <label style="font-weight: bold; font-size: 0.9rem; color: #555;">Intervalo (Valor):</label>
+          <input type="number" id="numPeriodoValor" min="1" value="10">
+          <button id="btnSalvarConfig" class="btn-login" style="margin-top: 10px;"><span class="material-icons">save</span> Salvar Período</button>
+        </div>
+      </div>
+
+      <div class="card" id="painelManual">
+        <h2><span class="material-icons">gamepad</span> Comandos (Manual)</h2>
+        
+        <div id="motorFeedback" class="motor-status-box">
+          <p style="margin: 0; font-weight: bold; font-size: 1.1rem;">Estado do Sistema: <span id="lblEstadoMotor">PARADO</span></p>
+        </div>
+
+        <button id="btnIniciar" class="btn-start"><span class="material-icons">play_arrow</span> Iniciar Limpeza</button>
+        <button id="btnPausar" class="btn-stop"><span class="material-icons">pause</span> Pausar Motores</button>
+        <div style="margin-top: 25px; border-top: 1px solid #eee; padding-top: 15px;">
+          <p style="margin: 0 0 10px 0; font-size: 1.1rem; color: #555; text-align: center;">Sentido de Movimentação</p>
+          <p style="margin: 0 0 15px 0; text-align: center;"><strong id="lblDirecao" style="color: var(--accent-info); font-size: 1.5rem; letter-spacing: 2px;">DIR</strong></p>
+          <button id="btnReverter"><span>Segure 3s para Inverter</span></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="material-icons">insights</span> Info Gerais</h2>
+        
+        <div class="data-row">
+          <div style="display: flex; align-items: center; color: #555;">Bateria 1: 
+            <div class="battery-container"><div class="battery-fill" id="bat1-fill"></div></div>
+          </div>
+          <span class="value-display"><span id="valBat1">--</span> V</span>
+        </div>
+        
+        <div class="data-row">
+          <div style="display: flex; align-items: center; color: #555;">Bateria 2: 
+            <div class="battery-container"><div class="battery-fill" id="bat2-fill"></div></div>
+          </div>
+          <span class="value-display"><span id="valBat2">--</span> V</span>
+        </div>
+
+        <div class="data-row" style="margin-top: 25px; border-top: 1px solid #eee; padding-top: 15px; color: #555;">
+          <span>Ciclos Completos:</span>
+          <span class="value-display" style="font-size: 1.8rem;" id="valCiclos">--</span>
+        </div>
+        <button id="btnResetCiclos" style="margin-top: 5px; background-color: #777;"><span class="material-icons">restart_alt</span> Zerar Contador</button>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1; background: #2a2a2a;">
+        <h2 style="color: #fff; border-bottom: 1px solid #444;"><span class="material-icons">format_list_bulleted</span> Histórico de Eventos e Alarmes</h2>
+        <div id="logContainer" class="log-terminal">
+          </div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1;">
+        <h2><span class="material-icons">person_add</span> Gerenciar Acessos (Adicionar Operador)</h2>
+        <div class="user-grid">
+          <input type="email" id="newEmail" placeholder="Novo E-mail de Operador" style="margin-bottom: 0;">
+          <input type="password" id="newPassword" placeholder="Nova Senha (mínimo 6 caracteres)" style="margin-bottom: 0;">
+          <button id="btnCriarUsuario" class="btn-login" style="margin-top: 0;"><span class="material-icons">add_circle</span> Cadastrar</button>
+        </div>
+      </div>
+    </div>
+    
+    <div style="display: flex; justify-content: center; margin-top: 30px;">
+      <button id="logoutBtn" style="width: auto; padding: 10px 30px; background-color: rgba(255,255,255,0.2); border: 1px solid #fff;"><span class="material-icons">logout</span> Encerrar Sessão</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAmdb7YUBl9grWPQvpn6OtNHqX0r2_Z47Q",
+      authDomain: "test-19-04-26.firebaseapp.com",
+      databaseURL: "https://test-19-04-26-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "test-19-04-26",
+      storageBucket: "test-19-04-26.firebasestorage.app",
+      messagingSenderId: "84987780616",
+      appId: "1:84987780616:web:e62ebfb5c7ed5c52193bbd"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    
+    // Variáveis do Cronômetro
+    let segundosRestantes = 0;
+    let intervaloCronometro = null;
+
+    // --- FUNÇÃO DO SISTEMA DE LOGS ---
+    function registrarLog(mensagem, tipo = "info") {
+      const logBox = document.getElementById("logContainer");
+      const agora = new Date();
+      const hora = String(agora.getHours()).padStart(2, '0');
+      const min = String(agora.getMinutes()).padStart(2, '0');
+      const sec = String(agora.getSeconds()).padStart(2, '0');
+
+      let classeCor = "log-msg-info";
+      if(tipo === "sucesso") classeCor = "log-msg-success";
+      if(tipo === "alerta") classeCor = "log-msg-alert";
+      if(tipo === "erro") classeCor = "log-msg-danger";
+
+      const entrada = document.createElement("div");
+      entrada.className = "log-entry";
+      entrada.innerHTML = `<span class="log-time">[${hora}:${min}:${sec}]</span> <span class="${classeCor}">${mensagem}</span>`;
+
+      // Insere sempre no topo
+      logBox.insertBefore(entrada, logBox.firstChild);
+
+      // Limita a 50 linhas para não travar o navegador
+      if(logBox.children.length > 50) {
+        logBox.removeChild(logBox.lastChild);
+      }
+    }
+
+    // --- STATUS DO SERVIDOR ---
+    const serverLed = document.getElementById('serverLed');
+    const serverText = document.getElementById('serverStatusText');
+    db.ref(".info/connected").on("value", snap => {
+      if (snap.val() === true) {
+        serverLed.className = "status-dot dot-ok";
+        serverText.innerText = "Servidor Conectado";
+        registrarLog("Conexão estabelecida com o banco de dados da nuvem.", "sucesso");
+      } else {
+        serverLed.className = "status-dot dot-error";
+        serverText.innerText = "Servidor Offline";
+        registrarLog("Tentando conectar aos servidores da nuvem...", "alerta");
+      }
+    });
+
+    function showToast(mensagem) {
+      const toast = document.getElementById("toast");
+      toast.innerText = mensagem;
+      toast.className = "show";
+      setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+    }
+
+    function atualizarBateria(idElemento, tensao) {
+      const minV = 10.5; const maxV = 12.6;
+      let porcentagem = ((tensao - minV) / (maxV - minV)) * 100;
+      if(porcentagem > 100) porcentagem = 100;
+      if(porcentagem < 0) porcentagem = 0;
+
+      const fill = document.getElementById(idElemento);
+      fill.style.width = porcentagem + "%";
+
+      if(porcentagem > 60) fill.style.backgroundColor = "var(--accent-active)";
+      else if(porcentagem > 20) fill.style.backgroundColor = "#fbc02d";
+      else fill.style.backgroundColor = "var(--accent-stop)";
+    }
+
+    // --- LOGIN ---
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const errorDiv = document.getElementById("loginError");
+      errorDiv.style.display = "none";
+
+      if(!email || !password) {
+        errorDiv.innerText = "Por favor, preencha o e-mail e a senha.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      firebase.auth().signInWithEmailAndPassword(email, password)
+        .then(() => {
+          document.querySelector('.main-header').style.display = "none";
+          document.getElementById("loginForm").style.display = "none";
+          document.getElementById("dashboard").style.display = "block";
+          showToast("Acesso Liberado!");
+          registrarLog(`Sessão iniciada pelo usuário: ${email}`, "info");
+          iniciarIHM();
+        }).catch(err => {
+          errorDiv.innerText = "Usuário ou senha incorretos! Verifique os dados.";
+          errorDiv.style.display = "block";
+        });
+    });
+
+    document.getElementById("btnCriarUsuario").addEventListener("click", () => {
+      const mail = document.getElementById("newEmail").value.trim();
+      const pass = document.getElementById("newPassword").value;
+      if(pass.length < 6) { showToast("A senha precisa ter no mínimo 6 caracteres!"); return; }
+      secondaryApp.auth().createUserWithEmailAndPassword(mail, pass)
+        .then(() => {
+          showToast("Novo operador cadastrado com sucesso!");
+          registrarLog(`Novo operador cadastrado: ${mail}`, "info");
+          secondaryApp.auth().signOut(); 
+          document.getElementById("newEmail").value = "";
+          document.getElementById("newPassword").value = "";
+        }).catch(e => { alert("Erro ao cadastrar: " + e.message); });
+    });
+
+    document.getElementById("logoutBtn").onclick = () => {
+      firebase.auth().signOut().then(() => location.reload());
+    };
+
+    // --- LÓGICA DA IHM ---
+    function iniciarIHM() {
+      const baseRef = db.ref("sistema_limpeza");
+      const espLed = document.getElementById("espLed");
+      const espText = document.getElementById("espStatusText");
+      
+      let watchdogTimeout;
+      
+      // Variáveis para rastrear mudanças e evitar flood no log
+      let ultimoModo = null;
+      let ultimoStatusMotor = null;
+      let ultimaDirecao = null;
+
+      // Leitura
+      baseRef.on("value", (snapshot) => {
+        const data = snapshot.val();
+        if(!data) return;
+
+        // Cão de guarda
+        clearTimeout(watchdogTimeout);
+        if(espLed.className !== "status-dot dot-ok") {
+            espLed.className = "status-dot dot-ok";
+            espText.innerText = "ESP32 Trocando Informações";
+            registrarLog("ESP32 respondendo e sincronizada com a IHM.", "sucesso");
+        }
+        
+        watchdogTimeout = setTimeout(() => {
+          espLed.className = "status-dot dot-error";
+          espText.innerText = "Não Há Troca de Informações";
+          registrarLog("ALERTA: Perda de comunicação com a ESP32! Verifique a energia e o Wi-Fi da placa.", "erro");
+        }, 15000);
+
+        if(data.telemetria) {
+          document.getElementById("valBat1").innerText = data.telemetria.tensao_bat1.toFixed(1);
+          document.getElementById("valBat2").innerText = data.telemetria.tensao_bat2.toFixed(1);
+          document.getElementById("valCiclos").innerText = data.telemetria.ciclos_realizados;
+          atualizarBateria("bat1-fill", data.telemetria.tensao_bat1);
+          atualizarBateria("bat2-fill", data.telemetria.tensao_bat2);
+
+          // Atualiza o tempo restante recebido da ESP32
+          if(data.telemetria.tempo_restante !== undefined) {
+            segundosRestantes = data.telemetria.tempo_restante;
+          }
+        }
+
+        if(data.config) {
+          const isAuto = (data.config.modo === "automatico");
+          const isManual = !isAuto;
+          
+          if (ultimoModo !== null && ultimoModo !== data.config.modo) {
+              registrarLog(`Sistema alterado para MODO ${data.config.modo.toUpperCase()}`, "alerta");
+          }
+          ultimoModo = data.config.modo;
+
+          document.getElementById("btnModoAuto").classList.toggle("active", isAuto);
+          document.getElementById("btnModoManual").classList.toggle("active", isManual);
+          
+          document.getElementById("configAuto").style.opacity = isManual ? "1" : "0.5";
+          document.getElementById("configAuto").style.pointerEvents = isManual ? "auto" : "none";
+          document.getElementById("painelManual").style.opacity = isManual ? "1" : "0.5";
+          document.getElementById("painelManual").style.pointerEvents = isManual ? "auto" : "none";
+
+          document.getElementById("selPeriodoTipo").value = data.config.periodo_tipo;
+          document.getElementById("numPeriodoValor").value = data.config.periodo_valor;
+
+          // Exibe o contador apenas no modo AUTO se o robô estiver parado
+          const roboParado = data.comandos ? !data.comandos.iniciar : true;
+          if (isAuto && roboParado) {
+            document.getElementById("countdownContainer").style.display = "block";
+            if (!intervaloCronometro) iniciarCronometroVisual();
+          } else {
+            document.getElementById("countdownContainer").style.display = "none";
+            clearInterval(intervaloCronometro);
+            intervaloCronometro = null;
+          }
+        }
+
+        if(data.comandos) {
+          document.getElementById("lblDirecao").innerText = data.comandos.sentido_direcao;
+          if (ultimaDirecao !== null && ultimaDirecao !== data.comandos.sentido_direcao) {
+              registrarLog(`Mecânica: Sentido de tração invertido para a ${data.comandos.sentido_direcao === "DIR" ? "DIREITA" : "ESQUERDA"}.`, "info");
+          }
+          ultimaDirecao = data.comandos.sentido_direcao;
+
+          if (data.comandos.iniciar === true) {
+            document.getElementById("lblEstadoMotor").innerText = "EM MOVIMENTO";
+            document.getElementById("motorFeedback").className = "motor-status-box active";
+            if (ultimoStatusMotor !== true) registrarLog("Ciclo de limpeza dos painéis foi INICIADO.", "sucesso");
+            ultimoStatusMotor = true;
+          } else {
+            document.getElementById("lblEstadoMotor").innerText = "PARADO";
+            document.getElementById("motorFeedback").className = "motor-status-box";
+            if (ultimoStatusMotor !== false && ultimoStatusMotor !== null) registrarLog("Motores de tração e escova foram PARADOS.", "alerta");
+            ultimoStatusMotor = false;
+          }
+        }
+      });
+
+      // Escritas
+      document.getElementById("btnModoManual").onclick = () => {
+        baseRef.child("config/modo").set("manual");
+        showToast("Modo alterado para MANUAL");
+      };
+      document.getElementById("btnModoAuto").onclick = () => {
+        baseRef.child("config/modo").set("automatico");
+        showToast("Modo alterado para AUTOMÁTICO");
+      };
+      
+      document.getElementById("btnSalvarConfig").onclick = () => {
+        const tipo = document.getElementById("selPeriodoTipo").value;
+        const valor = parseInt(document.getElementById("numPeriodoValor").value);
+        baseRef.child("config/periodo_tipo").set(tipo);
+        baseRef.child("config/periodo_valor").set(valor);
+        showToast("Configuração de tempo salva!");
+        registrarLog(`Nova periodicidade automática salva: a cada ${valor} ${tipo}.`, "info");
+      };
+
+      document.getElementById("btnIniciar").onclick = () => {
+        registrarLog("Enviando ordem remota para PARTIDA...", "info");
+        baseRef.child("comandos/iniciar").set(true);
+        baseRef.child("comandos/pausar").set(false);
+      };
+
+      document.getElementById("btnPausar").onclick = () => {
+        registrarLog("Enviando ordem remota para PARADA...", "info");
+        baseRef.child("comandos/iniciar").set(false);
+        baseRef.child("comandos/pausar").set(true);
+      };
+      
+      document.getElementById("btnResetCiclos").onclick = () => {
+        if(confirm("Tem certeza que deseja zerar a contagem de ciclos?")) {
+          baseRef.child("comandos/reset_ciclos").set(true);
+          showToast("Contador zerado com sucesso!");
+          registrarLog("O contador de ciclos totais foi zerado pelo operador.", "alerta");
+        }
+      };
+
+      const btnRev = document.getElementById("btnReverter");
+      let timerReversao;
+      
+      const iniciarReversao = (e) => {
+        e.preventDefault(); 
+        btnRev.classList.add("holding");
+        timerReversao = setTimeout(() => {
+          const sentido = document.getElementById("lblDirecao").innerText === "DIR" ? "ESQ" : "DIR";
+          baseRef.child("comandos/sentido_direcao").set(sentido);
+          btnRev.classList.remove("holding");
+          showToast("Sentido Revertido para " + sentido + "!");
+        }, 3000);
+      };
+
+      const cancelarReversao = () => {
+        clearTimeout(timerReversao);
+        btnRev.classList.remove("holding");
+      };
+
+      btnRev.addEventListener("mousedown", iniciarReversao);
+      btnRev.addEventListener("touchstart", iniciarReversao);
+      btnRev.addEventListener("mouseup", cancelarReversao);
+      btnRev.addEventListener("mouseleave", cancelarReversao);
+      btnRev.addEventListener("touchend", cancelarReversao);
+
+      // --- FUNÇÃO DO CRONÔMETRO REGRESSIVO VISUAL DA IHM ---
+      function iniciarCronometroVisual() {
+        intervaloCronometro = setInterval(() => {
+          if (segundosRestantes > 0) {
+            segundosRestantes--;
+            
+            // Formata os segundos em HH:MM:SS
+            const horas = String(Math.floor(segundosRestantes / 3600)).padStart(2, '0');
+            const minutos = String(Math.floor((segundosRestantes % 3600) / 60)).padStart(2, '0');
+            const segundos = String(segundosRestantes % 60).padStart(2, '0');
+            
+            document.getElementById("lblCountdown").innerText = `${horas}:${minutos}:${segundos}`;
+          } else {
+            document.getElementById("lblCountdown").innerText = "00:00:00";
+          }
+        }, 1000);
+      }
+    }
+  </script>
+</body>
+</html>
