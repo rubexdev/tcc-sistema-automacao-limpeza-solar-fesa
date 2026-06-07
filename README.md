@@ -3,6 +3,14 @@
 ## 📝 Resumo do Projeto
 Este projeto apresenta o desenvolvimento de um protótipo em escala reduzida para limpeza a seco de painéis fotovoltaicos utilizando o microcontrolador ESP32, escova cilíndrica de nylon e monitoramento remoto em tempo real via interface web integrada ao Firebase. O sistema foi validado por meio de ensaios experimentais controlados e uma análise de modos de falha (FMEA).
 
+---
+
+## 📺 Demonstração em Vídeo
+▶️ **[Clique aqui para assistir aos vídeos de demonstração do protótipo no Google Drive](https://drive.google.com/file/d/1mZMj68gSKPB6pUv0N98ByAwMNWDLgsBo/view?usp=drive_link)**
+
+---
+
+## 📜 Artigo Científico
 📕 **[Clique aqui para ler o artigo completo em PDF](documentos/Artigo_Limpeza_Painéis_Fotovoltáicos.pdf)**
 
 ---
